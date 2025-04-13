@@ -1,5 +1,7 @@
 ...
 
+with tabs[1]:
+    st.title("⚡ Microstructure-Based EMA Bounce Scalping")
     st.markdown("<meta http-equiv='refresh' content='60'>", unsafe_allow_html=True)
     st.subheader("🔁 Auto-Refreshing Every 60 Seconds")
 
