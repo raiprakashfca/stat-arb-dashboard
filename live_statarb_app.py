@@ -12,10 +12,10 @@ access_token = st.secrets["access_token"]
 kite = KiteConnect(api_key=api_key)
 kite.set_access_token(access_token)
 
-# Define selected stock pairs for stat arb
+# Define selected stock pairs for stat arb (correcting HPCL to HINDPETRO)
 pairs = [
     ("NTPC", "POWERGRID"),
-    ("BPCL", "HPCL"),
+    ("BPCL", "HINDPETRO"),
     ("JSWSTEEL", "HINDALCO"),
     ("SUNPHARMA", "AUROPHARMA"),
     ("SBIN", "BANKBARODA")
