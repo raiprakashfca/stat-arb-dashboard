@@ -65,4 +65,5 @@ for stock1, stock2 in pairs:
     except Exception as e:
         st.error(f"Error fetching data for {stock1} vs {stock2}: {e}")
 
-st.markdown(\"<meta http-equiv='refresh' content='30'>\", unsafe_allow_html=True)
+st.markdown("<meta http-equiv='refresh' content='30'>", unsafe_allow_html=True)
+
