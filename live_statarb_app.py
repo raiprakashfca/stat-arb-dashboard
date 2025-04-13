@@ -67,3 +67,4 @@ for stock1, stock2 in pairs:
 
 st.markdown("<meta http-equiv='refresh' content='30'>", unsafe_allow_html=True)
 
+
