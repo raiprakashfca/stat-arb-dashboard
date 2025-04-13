@@ -1,3 +1,5 @@
+import streamlit as st
+
 st.set_page_config(page_title="📈 Kalman + Scalping Dashboard", layout="wide")
 tabs = st.tabs(["📊 StatArb", "⚡ Scalping"])
 
