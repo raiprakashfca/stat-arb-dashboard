@@ -40,7 +40,7 @@ if "price_history" not in st.session_state:
     st.session_state.price_history = {pair: {"x": [], "y": []} for pair in pairs}
 
 st.info("🔄 Auto-refreshing every 30 seconds")
-st.experimental_set_query_params(ts=time.time())
+st.query_params["ts"] = str(time.time())
 
 # MAIN LOOP TO DISPLAY PAIRS
 for stock1, stock2 in pairs:
