@@ -1,4 +1,5 @@
-...
+st.set_page_config(page_title="📈 Kalman + Scalping Dashboard", layout="wide")
+tabs = st.tabs(["📊 StatArb", "⚡ Scalping"])
 
 with tabs[1]:
     st.title("⚡ Microstructure-Based EMA Bounce Scalping")
