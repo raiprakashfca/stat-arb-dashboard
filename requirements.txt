@@ -1,4 +1,5 @@
 streamlit
-kiteconnect
 pandas
 numpy
+kiteconnect
+statsmodels
