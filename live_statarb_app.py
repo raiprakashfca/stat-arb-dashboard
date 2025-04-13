@@ -6,6 +6,7 @@ from pykalman import KalmanFilter
 from kiteconnect import KiteConnect
 import time
 import os
+from datetime import datetime, timedelta
 
 # Read API credentials securely
 api_key = st.secrets["api_key"]
@@ -57,6 +58,29 @@ def kalman_beta(y, x):
                       transition_covariance=trans_cov)
     state_means, _ = kf.filter(y)
     return state_means[:, 0], y - (state_means[:, 0] * x + state_means[:, 1])
+
+# Function to fetch historical data from Zerodha
+@st.cache_data(ttl=86400)
+def fetch_historical_data(symbol, interval="day", days=100):
+    to_date = datetime.now()
+    from_date = to_date - timedelta(days=days)
+    instrument_token = kite.ltp(f"NSE:{symbol}")[f"NSE:{symbol}"]["instrument_token"]
+    data = kite.historical_data(instrument_token, from_date, to_date, interval)
+    return pd.DataFrame(data)
+
+# Historical backtest trigger
+with st.expander("📂 Load Historical Data for Backtesting"):
+    selected_pair = st.selectbox("Choose a stock pair for historical load", pairs)
+    hist_days = st.slider("Number of days of history", 30, 365, 90)
+    if st.button("📥 Fetch Historical Data"):
+        df1 = fetch_historical_data(selected_pair[0], days=hist_days)[["date", "close"]]
+        df2 = fetch_historical_data(selected_pair[1], days=hist_days)[["date", "close"]]
+        df = pd.merge(df1, df2, on="date", suffixes=(f"_{selected_pair[0]}", f"_{selected_pair[1]}"))
+        st.session_state.price_history[selected_pair] = {
+            "x": df[f"close_{selected_pair[0]}"].tolist(),
+            "y": df[f"close_{selected_pair[1]}"].tolist()
+        }
+        st.success("✅ Historical data loaded successfully!")
 
 # MAIN LOOP TO DISPLAY PAIRS
 for stock1, stock2 in pairs:
