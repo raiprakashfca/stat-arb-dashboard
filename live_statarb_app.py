@@ -2,8 +2,10 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import statsmodels.api as sm
+from pykalman import KalmanFilter
 from kiteconnect import KiteConnect
 import time
+import os
 
 # Read API credentials securely
 api_key = st.secrets["api_key"]
@@ -12,7 +14,7 @@ access_token = st.secrets["access_token"]
 kite = KiteConnect(api_key=api_key)
 kite.set_access_token(access_token)
 
-# Define selected stock pairs for stat arb (correcting HPCL to HINDPETRO)
+# Define selected stock pairs for stat arb
 pairs = [
     ("NTPC", "POWERGRID"),
     ("BPCL", "HINDPETRO"),
@@ -21,8 +23,8 @@ pairs = [
     ("SBIN", "BANKBARODA")
 ]
 
-st.set_page_config(page_title="📈 StatArb Dashboard", layout="wide")
-st.title("📊 OLS-Based Statistical Arbitrage Dashboard")
+st.set_page_config(page_title="📈 Kalman Filter StatArb", layout="wide")
+st.title("📊 Kalman Filter-Based Statistical Arbitrage Dashboard")
 
 st.markdown("""
 <style>
@@ -41,6 +43,20 @@ if "price_history" not in st.session_state:
 
 st.info("🔄 Auto-refreshing every 30 seconds")
 st.query_params["ts"] = str(time.time())
+
+# Kalman Filter-based beta estimator
+def kalman_beta(y, x):
+    delta = 1e-5
+    trans_cov = delta / (1 - delta) * np.eye(2)
+    obs_mat = np.expand_dims(np.vstack([x, np.ones(len(x))]).T, axis=1)
+    kf = KalmanFilter(transition_matrices=np.eye(2),
+                      observation_matrices=obs_mat,
+                      initial_state_mean=np.zeros(2),
+                      initial_state_covariance=np.ones((2, 2)),
+                      observation_covariance=1.0,
+                      transition_covariance=trans_cov)
+    state_means, _ = kf.filter(y)
+    return state_means[:, 0], y - (state_means[:, 0] * x + state_means[:, 1])
 
 # MAIN LOOP TO DISPLAY PAIRS
 for stock1, stock2 in pairs:
@@ -61,79 +77,50 @@ for stock1, stock2 in pairs:
             stock2: st.session_state.price_history[(stock1, stock2)]["y"]
         })
 
-        if len(df) >= 30:
-            X = sm.add_constant(df[stock2])
-            model = sm.OLS(df[stock1], X).fit()
-            df['residuals'] = model.resid
-            zscore = (df['residuals'] - df['residuals'].rolling(30).mean()) / df['residuals'].rolling(30).std()
+        if len(df) >= 60:
+            beta_series, residuals = kalman_beta(df[stock1].values, df[stock2].values)
+            zscore = (pd.Series(residuals) - pd.Series(residuals).rolling(30).mean()) / pd.Series(residuals).rolling(30).std()
+            latest_z = zscore.iloc[-1]
+            latest_beta = beta_series[-1]
 
-            latest_zscore = zscore.iloc[-1]
             signal = "No Signal"
-            if latest_zscore > 2:
+            if latest_z > 2:
                 signal = f"🔻 SELL {stock1}, BUY {stock2}"
-            elif latest_zscore < -2:
+            elif latest_z < -2:
                 signal = f"🔺 BUY {stock1}, SELL {stock2}"
 
             with col1:
                 st.metric(label=f"{stock1} Price", value=price1)
                 st.metric(label=f"{stock2} Price", value=price2)
-                st.metric(label="Z-score", value=f"{latest_zscore:.2f}")
+                st.metric(label="Z-score", value=f"{latest_z:.2f}")
+                st.metric(label="Kalman Beta", value=f"{latest_beta:.2f}")
                 st.success(f"📣 Signal: **{signal}**")
 
             with col2:
-                st.line_chart(zscore.tail(50))
+                st.line_chart(pd.DataFrame({
+                    "Beta": beta_series,
+                    "Z-Score": zscore
+                }))
+
+            # Logging to CSV
+            log_df = pd.DataFrame({
+                "Timestamp": [pd.Timestamp.now()],
+                "Pair": [f"{stock1}-{stock2}"],
+                "Beta": [latest_beta],
+                "Z-Score": [latest_z],
+                "Signal": [signal]
+            })
+            log_file = f"log_{stock1}_{stock2}.csv"
+            if os.path.exists(log_file):
+                log_df.to_csv(log_file, mode='a', header=False, index=False)
+            else:
+                log_df.to_csv(log_file, index=False)
         else:
             with col1:
-                st.warning("Waiting for at least 30 data points...")
+                st.warning("Waiting for at least 60 data points for Kalman Filter...")
 
     except Exception as e:
         st.error(f"Error fetching data for {stock1} vs {stock2}: {e}")
-
-# Backtesting module using regression residuals
-with st.expander("🧪 Run OLS-Based Backtest"):
-    selected_pair = st.selectbox("Choose a pair to backtest", [f"{s1} & {s2}" for s1, s2 in pairs])
-    entry_z = st.slider("Z-score Entry Threshold", 1.0, 3.0, 2.0, 0.1)
-    exit_z = st.slider("Z-score Exit Threshold", -1.0, 1.0, 0.0, 0.1)
-
-    if st.button("Run Backtest"):
-        s1, s2 = selected_pair.split(" & ")
-        df_bt = pd.DataFrame({
-            s1: st.session_state.price_history[(s1, s2)]["x"],
-            s2: st.session_state.price_history[(s1, s2)]["y"]
-        })
-
-        if len(df_bt) < 30:
-            st.warning("Not enough data for backtest (need at least 30 samples).")
-        else:
-            X_bt = sm.add_constant(df_bt[s2])
-            model_bt = sm.OLS(df_bt[s1], X_bt).fit()
-            df_bt['residuals'] = model_bt.resid
-            z_bt = (df_bt['residuals'] - df_bt['residuals'].rolling(30).mean()) / df_bt['residuals'].rolling(30).std()
-
-            position = 0
-            pnl = []
-            entry_price = 0
-
-            for i in range(30, len(z_bt)):
-                if position == 0:
-                    if z_bt.iloc[i] > entry_z:
-                        position = -1
-                        entry_price = df_bt['residuals'].iloc[i]
-                    elif z_bt.iloc[i] < -entry_z:
-                        position = 1
-                        entry_price = df_bt['residuals'].iloc[i]
-                elif position == -1 and z_bt.iloc[i] < exit_z:
-                    pnl.append(entry_price - df_bt['residuals'].iloc[i])
-                    position = 0
-                elif position == 1 and z_bt.iloc[i] > exit_z:
-                    pnl.append(df_bt['residuals'].iloc[i] - entry_price)
-                    position = 0
-
-            if pnl:
-                st.success(f"Backtest Completed. Trades: {len(pnl)}, Total PnL: ₹{sum(pnl):.2f}, Avg: ₹{np.mean(pnl):.2f}")
-                st.line_chart(pd.Series(pnl).cumsum())
-            else:
-                st.info("No trades triggered in backtest.")
 
 # Auto-refresh every 30 seconds
 st.markdown("<meta http-equiv='refresh' content='30'>", unsafe_allow_html=True)
