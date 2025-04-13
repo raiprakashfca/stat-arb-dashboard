@@ -42,41 +42,40 @@ with tabs[0]:
     st.subheader("🔁 Auto-Refreshing Every 30 Seconds")
     st.markdown("<meta http-equiv='refresh' content='30'>", unsafe_allow_html=True)
 
-    pair = st.selectbox("Select Pair", [("SBIN", "BANKBARODA"), ("HINDALCO", "JSWSTEEL"), ("NTPC", "POWERGRID")])
+    pairs = [("NTPC", "POWERGRID"), ("BPCL", "HINDPETRO"), ("JSWSTEEL", "HINDALCO"), ("SUNPHARMA", "AUROPHARMA"), ("SBIN", "BANKBARODA")]
 
-    try:
-        df1 = fetch_historical_data(pair[0], interval="minute", days=1)
-        if df1.empty:
-            st.warning(f"No data returned for {pair[0]} — market may be closed or holiday.")
-            st.stop()
-        st.write(f"**Preview {pair[0]} data:**")
-        st.dataframe(df1.head())
-        df2 = fetch_historical_data(pair[1], interval="minute", days=1)
-        if df2.empty:
-            st.warning(f"No data returned for {pair[1]} — market may be closed or holiday.")
-            st.stop()
-        st.write(f"**Preview {pair[1]} data:**")
-        st.dataframe(df2.head())
-        df = pd.merge(df1, df2, on="date", suffixes=(f"_{pair[0]}", f"_{pair[1]}"))
+    for pair in pairs:
+        st.divider()
+        st.header(f"{pair[0]} vs {pair[1]}")
+        try:
+            df1 = fetch_historical_data(pair[0], interval="minute", days=1)
+            if df1.empty:
+                st.warning(f"No data returned for {pair[0]} — market may be closed or holiday.")
+                continue
+            df2 = fetch_historical_data(pair[1], interval="minute", days=1)
+            if df2.empty:
+                st.warning(f"No data returned for {pair[1]} — market may be closed or holiday.")
+                continue
 
-        beta_series, residuals = kalman_beta(df[f"close_{pair[0]}"][:], df[f"close_{pair[1]}"][:])
-        zscore = (pd.Series(residuals) - pd.Series(residuals).rolling(30).mean()) / pd.Series(residuals).rolling(30).std()
-        latest_z = zscore.iloc[-1]
-        latest_beta = beta_series[-1]
+            df = pd.merge(df1, df2, on="date", suffixes=(f"_{pair[0]}", f"_{pair[1]}"))
+            beta_series, residuals = kalman_beta(df[f"close_{pair[0]}"][:], df[f"close_{pair[1]}"][:])
+            zscore = (pd.Series(residuals) - pd.Series(residuals).rolling(30).mean()) / pd.Series(residuals).rolling(30).std()
+            latest_z = zscore.iloc[-1]
+            latest_beta = beta_series[-1]
 
-        signal = "No Signal"
-        if latest_z > 2:
-            signal = f"🔻 SELL {pair[0]}, BUY {pair[1]}"
-        elif latest_z < -2:
-            signal = f"🔺 BUY {pair[0]}, SELL {pair[1]}"
+            signal = "No Signal"
+            if latest_z > 2:
+                signal = f"🔻 SELL {pair[0]}, BUY {pair[1]}"
+            elif latest_z < -2:
+                signal = f"🔺 BUY {pair[0]}, SELL {pair[1]}"
 
-        st.metric(label="Z-score", value=f"{latest_z:.2f}")
-        st.metric(label="Kalman Beta", value=f"{latest_beta:.2f}")
-        st.success(f"📣 Signal: **{signal}**")
-        st.line_chart(pd.DataFrame({"Z-Score": zscore, "Beta": beta_series}))
+            st.metric(label="Z-score", value=f"{latest_z:.2f}")
+            st.metric(label="Kalman Beta", value=f"{latest_beta:.2f}")
+            st.success(f"📣 Signal: **{signal}**")
+            st.line_chart(pd.DataFrame({"Z-Score": zscore, "Beta": beta_series}))
 
-    except Exception as e:
-        st.error(f"Error in Kalman StatArb: {e}")
+        except Exception as e:
+            st.error(f"Error for pair {pair[0]} & {pair[1]}: {e}")
 
 with tabs[1]:
     st.title("⚡ Microstructure-Based EMA Bounce Scalping")
@@ -92,11 +91,7 @@ with tabs[1]:
             st.stop()
         st.write(f"**Preview {symbol} data:**")
         st.dataframe(live_df.head())
-        if live_df.empty:
-            st.warning(f"No data returned for {symbol} — market may be closed or holiday.")
-            st.stop()
-        st.write(f"**Preview {symbol} data:**")
-        st.dataframe(live_df.head())
+
         live_df["EMA9"] = live_df["close"].ewm(span=9).mean()
         live_df["EMA21"] = live_df["close"].ewm(span=21).mean()
         live_df.dropna(inplace=True)
