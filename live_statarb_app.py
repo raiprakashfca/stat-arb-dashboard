@@ -45,8 +45,18 @@ with tabs[0]:
     pair = st.selectbox("Select Pair", [("SBIN", "BANKBARODA"), ("HINDALCO", "JSWSTEEL"), ("NTPC", "POWERGRID")])
 
     try:
-        df1 = fetch_historical_data(pair[0], interval="minute", days=1)[["date", "close"]]
-        df2 = fetch_historical_data(pair[1], interval="minute", days=1)[["date", "close"]]
+        df1 = fetch_historical_data(pair[0], interval="minute", days=1)
+        if df1.empty:
+            st.warning(f"No data returned for {pair[0]} — market may be closed or holiday.")
+            st.stop()
+        st.write(f"**Preview {pair[0]} data:**")
+        st.dataframe(df1.head())
+        df2 = fetch_historical_data(pair[1], interval="minute", days=1)
+        if df2.empty:
+            st.warning(f"No data returned for {pair[1]} — market may be closed or holiday.")
+            st.stop()
+        st.write(f"**Preview {pair[1]} data:**")
+        st.dataframe(df2.head())
         df = pd.merge(df1, df2, on="date", suffixes=(f"_{pair[0]}", f"_{pair[1]}"))
 
         beta_series, residuals = kalman_beta(df[f"close_{pair[0]}"][:], df[f"close_{pair[1]}"][:])
@@ -77,6 +87,16 @@ with tabs[1]:
 
     try:
         live_df = fetch_historical_data(symbol, interval="minute", days=1)
+        if live_df.empty:
+            st.warning(f"No data returned for {symbol} — market may be closed or holiday.")
+            st.stop()
+        st.write(f"**Preview {symbol} data:**")
+        st.dataframe(live_df.head())
+        if live_df.empty:
+            st.warning(f"No data returned for {symbol} — market may be closed or holiday.")
+            st.stop()
+        st.write(f"**Preview {symbol} data:**")
+        st.dataframe(live_df.head())
         live_df["EMA9"] = live_df["close"].ewm(span=9).mean()
         live_df["EMA21"] = live_df["close"].ewm(span=21).mean()
         live_df.dropna(inplace=True)
